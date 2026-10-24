@@ -7,7 +7,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { z } from 'zod';
 import { pool } from './db.js';
-import { scanNote, parseQuestion } from './ai.js';
+import { scanNote, parseQuestion, parseSpoken, localize } from './ai.js';
 
 const app = express();
 app.use(cors());
@@ -88,6 +88,12 @@ app.post('/api/ai/scan-list', auth, upload.single('image'), wrap(async (req, res
   if (!req.file || !/^image\//.test(req.file.mimetype)) throw fail(400, 'Upload a photo of the note.');
   res.json(await scanNote(req.file.buffer, req.file.mimetype));
 }));
+
+app.post('/api/ai/parse-voice', auth, wrap(async (req, res) => {
+  const b = z.object({ transcript: z.string().trim().min(3).max(800), mode: z.enum(['bill', 'payment']).default('bill') }).parse(req.body);
+  res.json(await parseSpoken(b.transcript, b.mode));
+}));
+
 app.post('/api/bills/preview', auth, wrap(async (req, res) => {
   const items = ItemsSchema.parse(req.body.items);
   res.json({ items, total: totalOf(items) });
@@ -251,7 +257,7 @@ app.delete('/api/chats/:id', auth, wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 app.post('/api/chats/ask', auth, wrap(async (req, res) => {
-  const b = z.object({ question: z.string().trim().min(2).max(300), chatId: z.coerce.number().nullish(), customerId: z.coerce.number().nullish() }).parse(req.body);
+  const b = z.object({ question: z.string().trim().min(2).max(300), chatId: z.coerce.number().nullish(), customerId: z.coerce.number().nullish(), lang: z.enum(['en', 'hi', 'te']).optional().default('en') }).parse(req.body);
   const customer = b.customerId ? await getCustomer(req.shopId, b.customerId) : null;
   let chat;
   if (b.chatId) {
@@ -263,7 +269,8 @@ app.post('/api/chats/ask', auth, wrap(async (req, res) => {
   await q(`INSERT INTO chat_messages(chat_id,role,content) VALUES($1,'user',$2)`, [chat.id, b.question]);
   const t0 = Date.now();
   const p = await parseQuestion(b.question, customer ? 'customer' : 'shop');
-  const answer = customer ? await customerAnswer(req.shopId, customer, p) : await shopAnswer(req.shopId, p);
+  const english = customer ? await customerAnswer(req.shopId, customer, p) : await shopAnswer(req.shopId, p);
+  const answer = await localize(english, b.lang);
   const ms = Date.now() - t0;
   await q(`INSERT INTO chat_messages(chat_id,role,content,via_ai,ms) VALUES($1,'assistant',$2,$3,$4)`, [chat.id, answer, p.viaAI === true, ms]);
   await q('UPDATE chats SET updated_at=now() WHERE id=$1', [chat.id]);

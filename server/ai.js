@@ -106,7 +106,9 @@ function keywordIntent(q, scope) {
 
 export async function parseQuestion(q, scope = 'shop') {
   const list = (scope === 'shop' ? SHOP_INTENTS : CUST_INTENTS).filter(i => i !== 'unknown');
+
   const prompt = `You classify a shopkeeper's question about their credit ledger (${scope === 'shop' ? 'the whole shop' : 'one specific customer'}).
+The question may be written in English, Hindi, Telugu or a mix (Hinglish / Tenglish); understand it in any of them.
 Return ONLY JSON like {"intent":"...","days":number|null}. No explanation.
 Allowed intents:
 ${list.map(i => `- ${i}: ${DESC[i]}`).join('\n')}
@@ -118,4 +120,56 @@ Question: ${JSON.stringify(q)}`;
     if (![...list, 'unknown'].includes(d.intent)) throw new Error('bad intent ' + d.intent);
     return { intent: d.intent, days: d.days ?? null, viaAI: true };
   } catch (e) { console.error('Falling back to keyword intent:', e.message); return keywordIntent(q, scope); }
+}
+
+
+// ================= Voice entry + language support =================
+const LANG_NAMES = { en: 'English', hi: 'Hindi', te: 'Telugu' };
+
+const SpokenBillSchema = z.object({
+  items: z.array(z.object({
+    description: z.string().min(1), quantity: num.optional(), unit: z.string().nullable().optional(), lineTotal: num.optional(), needsReview: z.boolean().optional(),
+  })).default([]),
+  paidNow: num.optional(),
+});
+const SpokenPaySchema = z.object({ amount: num.optional(), method: z.string().nullable().optional() });
+
+// Turns a spoken sentence (already converted to text by the browser) into structured data. The user still confirms it on screen.
+export async function parseSpoken(transcript, mode = 'bill') {
+  const rules = `The text was produced by speech-to-text, so it may contain small errors. It may be English, Hindi, Telugu or mixed.
+Convert spoken numbers to digits (e.g. "sau"=100, "do sau"=200, "dedh sau"=150, "vanda"/"nooru"=100, "nuru"=100). Never guess a value that was not said: use null.`;
+  if (mode === 'payment') {
+    const prompt = `A shopkeeper in India dictated a payment received from a customer. ${rules}
+Return ONLY JSON: {"amount": number|null, "method": "cash"|"upi"|null}. No explanation.
+Text: ${JSON.stringify(transcript)}`;
+    const d = SpokenPaySchema.parse(extractJson(await callGemma([{ text: prompt }], { model: CHAT_MODEL(), thinking: 'minimal', maxTokens: 120 })));
+    const m = String(d.method || '').toLowerCase();
+    return { amount: d.amount ?? null, method: m === 'cash' || m === 'upi' ? m : null };
+  }
+  const prompt = `A shopkeeper in India dictated a credit sale (goods given on credit). ${rules}
+Return ONLY JSON: {"items":[{"description":string,"quantity":number|null,"unit":string|null,"lineTotal":number|null,"needsReview":boolean}],"paidNow":number|null}
+Rules: description in English letters (transliterate Hindi/Telugu item names, e.g. "chawal" -> "Rice"). lineTotal = rupees for that line.
+If the price of a line was not said, lineTotal = null and needsReview = true. paidNow = money the customer paid right now, only if said. No grand total. No explanation.
+Text: ${JSON.stringify(transcript)}`;
+  const d = SpokenBillSchema.parse(extractJson(await callGemma([{ text: prompt }], { model: CHAT_MODEL(), thinking: 'minimal', maxTokens: 700 })));
+  return {
+    items: d.items.map(i => ({
+      description: i.description, quantity: i.quantity ?? 1, unit: i.unit ?? '',
+      lineTotal: i.lineTotal ?? null, needsReview: !!i.needsReview || i.lineTotal == null,
+    })),
+    paidNow: d.paidNow ?? null,
+  };
+}
+
+// Translates an answer that was built from real database numbers. Falls back to the English text if Gemma is unreachable.
+export async function localize(text, lang) {
+  if (!lang || lang === 'en' || !LANG_NAMES[lang]) return text;
+  try {
+    const prompt = `Translate this message from a shop ledger assistant into ${LANG_NAMES[lang]}.
+Keep every number, the ₹ symbol, customer names, dates, bullet characters (•) and line breaks exactly as they are. Do not add or remove information. Return ONLY the translation.
+Message:
+${text}`;
+    const out = await callGemma([{ text: prompt }], { model: CHAT_MODEL(), thinking: 'minimal', maxTokens: 700 });
+    return out.trim() || text;
+  } catch (e) { console.error('localize failed, sending English:', e.message); return text; }
 }
