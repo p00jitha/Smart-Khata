@@ -5,13 +5,6 @@ Photograph a handwritten note or just speak, in English, Hindi or Telugu. The AI
 
 > Built for **Hacktoberfest Hack Day Hyderabad × Kramer's Community** (MLH) 
 
-<!-- Add a demo GIF or screenshots here -->
-<!-- ![Dashboard](docs/dashboard.png) ![Bill from a handwritten note](docs/scan.png) -->
-
-**Live demo:** `<your-deployed-url>`  ·  **Demo video:** `<link>`
-
----
-
 ## The problem
 
 Many small shops give goods on credit and track it in a paper *katha* (notebook). Notes get lost, totals are miscalculated, dues are forgotten, and typing everything into an app is slow, especially in a local language.
@@ -21,6 +14,10 @@ Many small shops give goods on credit and track it in a paper *katha* (notebook)
 > **AI proposes → the human confirms → the database computes.**
 
 Gemma 4 reads handwriting, understands speech, classifies questions and translates. It **never** decides a balance and **never** writes to the ledger on its own. Every number a shopkeeper sees comes from SQL over confirmed records.
+
+ ##Demo
+
+ https://github.com/user-attachments/assets/803179f0-1195-43c8-b5cd-391c106fe198
 
 ## Features
 
@@ -202,7 +199,34 @@ smart-katha/
 - Passwords are hashed with bcrypt, and every query is scoped by `shop_id`.
 - Receipt links use a random 128-bit token.
 
+## Known limitations
+
+- Voice recognition uses the browser's Web Speech API (Chrome/Edge), which is not an open model. Gemma 4 handles the understanding after it.
+- Handwriting accuracy depends on photo quality, and uncertain lines are flagged for review.
+- No customer edit/delete screen yet.
+- Receipt messages are English only.
+- No automated tests or rate limiting yet.
+
+## Roadmap
+
+- [ ] Look up customers by name inside the shop-wide chat
+- [ ] Gemma-written payment reminders in the customer's language
+- [ ] Open speech-to-text (e.g. Whisper) for fully open-source voice
+- [ ] Self-hosted Gemma option for full data privacy
+- [ ] Edit/delete customers, export to CSV
+- [ ] Offline-first PWA
+- [ ] Automated tests
+
+## Contributing
+
+Contributions are welcome, and the repo is tagged `hacktoberfest`. Good first issues: more languages in `i18n.js`, new assistant intents, UI polish, tests. Fork the repo, create a branch, and open a pull request.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
+
 
 ## Acknowledgements
 
 Built with [Gemma 4](https://ai.google.dev/gemma) for **Hacktoberfest Hack Day Hyderabad × Kramer's Community** on MLH.
+
