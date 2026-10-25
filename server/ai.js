@@ -133,11 +133,21 @@ const SpokenBillSchema = z.object({
   paidNow: num.optional(),
 });
 const SpokenPaySchema = z.object({ amount: num.optional(), method: z.string().nullable().optional() });
+const SpokenCustSchema = z.object({ name: z.string().nullable().optional(), phone: z.union([z.string(), z.number()]).nullable().optional() });
 
 // Turns a spoken sentence (already converted to text by the browser) into structured data. The user still confirms it on screen.
 export async function parseSpoken(transcript, mode = 'bill') {
   const rules = `The text was produced by speech-to-text, so it may contain small errors. It may be English, Hindi, Telugu or mixed.
 Convert spoken numbers to digits (e.g. "sau"=100, "do sau"=200, "dedh sau"=150, "vanda"/"nooru"=100, "nuru"=100). Never guess a value that was not said: use null.`;
+    if (mode === 'customer') {
+    const prompt = `A shopkeeper in India dictated a new customer's name and 10-digit phone number. ${rules}
+Spoken digits must become a digit string (e.g. "nine eight seven six five four three two one zero" -> "9876543210"; also Hindi and Telugu digit words).
+Write the name in English letters. Return ONLY JSON: {"name": string|null, "phone": string|null}. phone = digits only. No explanation.
+Text: ${JSON.stringify(transcript)}`;
+    const d = SpokenCustSchema.parse(extractJson(await callGemma([{ text: prompt }], { model: CHAT_MODEL(), thinking: 'minimal', maxTokens: 120 })));
+    const digits = String(d.phone ?? '').replace(/\D/g, '').slice(-10);
+    return { name: d.name ? d.name.trim() : null, phone: digits.length === 10 ? digits : null };
+  }
   if (mode === 'payment') {
     const prompt = `A shopkeeper in India dictated a payment received from a customer. ${rules}
 Return ONLY JSON: {"amount": number|null, "method": "cash"|"upi"|null}. No explanation.

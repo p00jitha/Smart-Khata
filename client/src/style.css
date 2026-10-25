@@ -195,3 +195,6 @@ a>button{width:100%}
 .heard{background:var(--primary-soft);border-radius:8px;padding:8px 10px}
 .spk{min-height:0;height:26px;width:30px;padding:0;margin-left:8px;background:transparent;color:inherit;border:0;font-size:15px;vertical-align:middle}
 @media(prefers-reduced-motion:reduce){.mic.live{animation:none}}
+
+.row.autorow{cursor:pointer;gap:8px}
+.row.autorow>input{flex:none;min-width:0;width:20px;height:20px;min-height:0;padding:0}

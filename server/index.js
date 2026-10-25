@@ -90,7 +90,7 @@ app.post('/api/ai/scan-list', auth, upload.single('image'), wrap(async (req, res
 }));
 
 app.post('/api/ai/parse-voice', auth, wrap(async (req, res) => {
-  const b = z.object({ transcript: z.string().trim().min(3).max(800), mode: z.enum(['bill', 'payment']).default('bill') }).parse(req.body);
+  const b = z.object({ transcript: z.string().trim().min(3).max(800), mode: z.enum(['bill', 'payment', 'customer']).default('bill') }).parse(req.body);
   res.json(await parseSpoken(b.transcript, b.mode));
 }));
 

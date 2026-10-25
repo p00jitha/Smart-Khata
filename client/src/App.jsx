@@ -133,13 +133,29 @@ function ChatPanel({ customer, onClose }) {
 function Home({ open }) {
   const { t } = useLang();
   const [list, setList] = useState([]), [search, setSearch] = useState(''), [nw, setNw] = useState({ name: '', phone: '' }), [err, setErr] = useState(''), [sum, setSum] = useState(null);
+    const [cerr, setCerr] = useState(''), [vbusy, setVbusy] = useState(false), [auto, setAuto] = useState(() => localStorage.getItem('autoAdd') === '1');
   const load = s => api('/customers' + (s ? '?phone=' + encodeURIComponent(s) : '')).then(setList).catch(x => setErr(x.message));
   useEffect(() => { load(search); }, [search]);
   useEffect(() => { api('/summary').then(setSum).catch(() => {}); }, []);
-  const add = async e => {
-    e.preventDefault(); setErr('');
-    try { const c = await api('/customers', { method: 'POST', body: nw }); open(c.id); } catch (x) { setErr(x.message); }
+
+  const create = async body => {
+    setCerr('');
+    try { const c = await api('/customers', { method: 'POST', body }); open(c.id); } catch (x) { setCerr(x.message); }
   };
+  const add = e => { e.preventDefault(); create(nw); };
+  // Voice: "Ramesh, 9876543210" -> fills the form. If auto-add is ticked and both parts were heard, it saves straight away.
+  const onVoiceCust = async text => {
+    setCerr(''); setVbusy(true);
+    try {
+      const r = await api('/ai/parse-voice', { method: 'POST', body: { transcript: text, mode: 'customer' } });
+      setNw(cur => ({ name: r.name || cur.name, phone: r.phone || cur.phone }));
+      if (auto && r.name && r.phone) await create({ name: r.name, phone: r.phone });
+      else if (!r.phone) setCerr(t('phoneMissing'));
+    } catch (x) { setCerr(x.message); }
+    setVbusy(false);
+  };
+  const toggleAuto = e => { setAuto(e.target.checked); localStorage.setItem('autoAdd', e.target.checked ? '1' : '0'); };
+
   return <>
     <div className="pagehead"><h2>{t('dashboard')}</h2><p className="muted">{t('dashSub')}</p></div>
     {sum && <div className="stats">
@@ -150,10 +166,17 @@ function Home({ open }) {
       <div className="row"><input type="search" aria-label={t('search')} placeholder={t('search')} value={search} onChange={e => setSearch(e.target.value)} /></div>
       {list.length === 0 && <p className="muted">{t('noCust')}</p>}
       {list.map(c => <div key={c.id} className="cust" role="button" tabIndex={0} onClick={() => open(c.id)} onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), open(c.id))}><span className="cname">{c.name}</span><span className="cphone">{c.phone}</span><Bal v={c.balance} /></div>)}</div>
-    <form className="card" onSubmit={add}><h2>{t('addNew')}</h2>
+    
+    <form className="card" onSubmit={add}>
+      <h2>{t('addNew')}</h2><Err msg={cerr} />
+      <div className="row"><Mic label={t('speakCust')} onText={onVoiceCust} />{vbusy && <span className="muted">{t('parsing')}</span>}</div>
+      <label className="row autorow muted"><input type="checkbox" checked={auto} onChange={toggleAuto} /> {t('autoAdd')}</label>
+      <p className="muted">{t('voiceHintCust')}</p>
       <div className="row"><input aria-label={t('name')} placeholder={t('name')} value={nw.name} onChange={e => setNw({ ...nw, name: e.target.value })} required />
         <input aria-label={t('phone')} placeholder={t('phone')} inputMode="numeric" value={nw.phone} onChange={e => setNw({ ...nw, phone: e.target.value })} required />
-        <button className="ok">{t('addCust')}</button></div></form>
+        <button className="ok">{t('addCust')}</button>
+      </div>
+    </form>
   </>;
 }
 
@@ -205,7 +228,7 @@ function BillEditor({ customer, onSaved }) {
       <h2 style={{ fontSize: 16 }}>{t('sendReceipt', { name: customer.name })}</h2>
       <div className="row">
         <a href={`https://wa.me/91${customer.phone}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noreferrer"><button className="ok">WhatsApp</button></a>
-        <a href={`sms:+91${customer.phone}?&body=${encodeURIComponent(msg)}`}><button>SMS</button></a>
+        {/* <a href={`sms:+91${customer.phone}?&body=${encodeURIComponent(msg)}`}><button>SMS</button></a> */}
         <button className="ghost" onClick={copy}>{copied ? t('copied') : t('copyMsg')}</button>
         <button className="ghost" onClick={() => { setDone(null); setItems([blank()]); setImg(null); setPaid(''); setHeard(''); setKey(crypto.randomUUID()); }}>{t('newBill')}</button></div>
       <pre className="chat pre" style={{ fontFamily: 'inherit' }}>{msg}</pre></div>;
